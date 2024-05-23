@@ -7,6 +7,9 @@ from smtplib import SMTP
 from flask_cors import CORS
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import List, Optional, Tuple
+from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
+
 
 import psycopg2
 import Config
@@ -123,6 +126,58 @@ def receive_mail_with_receiver():
         mails = cur.fetchall()
         return jsonify(mails)
     return 'Invalid username or password'
+
+@app.route('/get_user_ids_and_public_keys', methods=['POST'])
+def get_user_ids_and_public_keys() -> Tuple[List[int], List[ed25519.Ed25519PublicKey]]:
+    data = request.get_json()
+    from_address = data['from']
+    to_address = data['to']
+    cc_address = data.get('cc')
+    bcc_address = data.get('bcc')
+    # Collect all relevant addresses into a single list
+    addresses = [from_address] + to_address
+    if cc_address:
+        addresses += cc_address
+    if bcc_address:
+        addresses += bcc_address
+
+    user_ids = []
+    public_keys = []
+
+    conn = psycopg2.connect(host=Config.get_pg_host(), port=Config.get_pg_port(), dbname=Config.get_pg_database(),
+                            user=Config.get_pg_user(), password=Config.get_pg_password())
+    with conn.cursor() as cur:
+        # Construct the SQL query with placeholders for the addresses
+        query = """
+            SELECT id, public_key_email_bytes
+            FROM public."user"
+            WHERE username = ANY(%s)
+            ORDER BY id;
+        """
+        cur.execute(query, (addresses,))
+        rows = cur.fetchall()
+
+        for row in rows:
+            user_id = row[0]
+            public_key_bytes = row[1]
+            public_key = x25519.X25519PublicKey.from_public_bytes(public_key_bytes)
+            user_ids.append(user_id)
+            public_keys.append(public_key)
+
+    return user_ids, public_keys
+
+@app.route('/upload_pkey', methods=['POST'])
+def upload_pkey():
+    data = request.get_json()
+    username = data['username']
+    pkey = data['pkey']
+    conn = psycopg2.connect(host=Config.get_pg_host(), port=Config.get_pg_port(), dbname=Config.get_pg_database(),
+                            user=Config.get_pg_user(), password=Config.get_pg_password())
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO public.User (public_key_email_bytes,username) VALUES (%s,%s)", (pkey,username))
+
+    conn.commit()
+    return 'Upload Successfully'
 
 
 @app.route('/register', methods=['POST'])
