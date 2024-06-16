@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Mail Box</title>
+    <link rel="icon" href="../../static/icon.ico">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+        }
+
+        h1 {
+            background-color: #333;
+            color: #fff;
+            padding: 10px 0;
+            text-align: center;
+        }
+
+        h2 {
+            color: #333;
+        }
+
+        input[type="text"], textarea {
+            display: block;
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            width: 100%;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #007BFF;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #mail-table {
+            border-collapse: collapse;
+            margin-top: 20px;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+
+        #mail-table th, #mail-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+
+        #mail-table tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        #mail-table th {
+            padding-top: 12px;
+            padding-bottom: 12px;
+            text-align: left;
+            background-color: #007BFF;
+            color: white;
+        }
+
+        .mail-section {
+            margin: 0 auto;
+            width: 60%;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0px 0px 10px 0px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .input-box {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .output-box {
+            flex: 1;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+<h1>Mail Box</h1>
+<div id="loading" style="display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
+    <div style="background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%;">
+        Loading...
+    </div>
+</div>
+<div class="mail-section">
+    <h2>Send Mail</h2>
+    <label for="mail-to">To:</label><br>
+    <input type="text" id="mail-to" placeholder="Enter recipient email"><br>
+    <label for="mail-cc">CC:</label><br>
+    <input type="text" id="mail-cc" placeholder="Enter CC email addresses"><br>
+    <label for="mail-bcc">BCC:</label><br>
+    <input type="text" id="mail-bcc" placeholder="Enter BCC email addresses"><br>
+    <label for="mail-subject">Subject:</label><br>
+    <input type="text" id="mail-subject" placeholder="Enter email subject"><br>
+    <label for="mail-content">Content:</label><br>
+    <textarea id="mail-content" placeholder="Enter email content" rows="10"></textarea><br>
+    <button onclick="sendMail()">Send</button>
+</div>
+
+<div class="mail-section">
+    <h2>Received Mail</h2>
+    <table id="mail-table">
+        <thead>
+        <tr>
+            <th>From</th>
+            <th>To</th>
+            <th>Time</th>
+            <th>Subject</th>
+            <th>CC</th>
+            <th>Body</th>
+        </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<div class="mail-section">
+    <div class="output-box">
+        <label for="output-text">Output:</label><br>
+        <textarea id="output-text" placeholder="Input" rows="3"></textarea>
+    </div>
+    <button class="button">Decrypt</button>
+    <div class="output-box">
+        <label for="output-text2">Output:</label><br>
+        <textarea id="output-text2" placeholder="Output" rows="3"></textarea>
+    </div>
+</div>
+
+<script>
+    const host = 'https://124.71.57.244:5000';
+
+    function sendMail() {
+        document.getElementById('loading').style.display = 'block';
+        var from;
+        fetch('/access_username')
+            .then(response => response.json())
+            .then(data => {
+                from = data.username;
+                const to = document.getElementById('mail-to').value;
+                const cc = document.getElementById('mail-cc').value;
+                const bcc = document.getElementById('mail-bcc').value;
+                const subject = document.getElementById('mail-subject').value;
+                const content = document.getElementById('mail-content').value;
+                fetch('/send_mail_with_sender', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({from: from, to: to, cc: cc, bcc: bcc, subject: subject, content: content})
+                })
+            });
+    }
+
+    fetch('/access_username')
+        .then(response => response.json())
+        .then(data => {
+            const username = data.username;
+            const password = data.password;
+
+            fetch(host + '/receive_mail_with_receiver', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `username=${username}&password=${password}`
+            })
+                .then(response => response.json())
+                .then(mails => {
+                    const tableBody = document.querySelector('#mail-table tbody');
+                    mails.forEach(mail => {
+                        const row = tableBody.insertRow();
+                        row.insertCell().innerText = mail.sender;  // Sender
+                        row.insertCell().innerText = mail.receiver;  // To
+                        row.insertCell().innerText = mail.date;  // Time
+                        row.insertCell().innerText = mail.subject;  // Subject
+                        row.insertCell().innerText = mail.cc.join(', ');  // CC
+                        row.insertCell().innerText = mail.content;  // Body
+                    });
+                    // 获取表格元素
+                    var table = document.getElementById('mail-table');
+
+                    // 为表格的每一行添加点击事件监听器
+                    for (var i = 0; i < table.rows.length; i++) {
+                        table.rows[i].onclick = function () {
+                            // 获取点击的行的"Body"列的内容
+                            var bodyContent = this.cells[5].innerText;
+
+                            // 将内容打印到第一个output box中
+                            document.getElementById('output-text').value = bodyContent;
+                        };
+                    }
+                });
+        });
+
+    document.querySelector('.button').addEventListener('click', async function() {
+        // 获取 output-text 的值
+        let encryptedText = document.getElementById('output-text').value;
+
+        // 发送 POST 请求到解密接口
+        let response = await fetch('/decrypt_message', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ content: encryptedText })
+        });
+
+        // 检查响应是否成功
+        if (!response.ok) {
+            alert('Failed to decrypt message, check the server.');
+            return;
+        }
+
+        // 解析响应体
+        let data = await response.json();
+
+        // 将解密后的内容显示在 output-text2 中
+        document.getElementById('output-text2').value = data.decrypted_message;
+    });
+</script>
+</body>
+</html>
