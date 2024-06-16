@@ -99,7 +99,6 @@
     </div>
 </div>
 <div class="mail-section">
-    <button onclick="generate_key()">Generate your Key first</button>
     <h2>Send Mail</h2>
     <label for="mail-to">To:</label><br>
     <input type="text" id="mail-to" placeholder="Enter recipient email"><br>
@@ -190,21 +189,6 @@
                         document.getElementById('loading').style.display = 'none';
                     });
             });
-    }
-
-    async function generate_key() {
-        try {
-            document.getElementById('loading').style.display = 'block';
-            const response = await fetch('/generate_key');
-            const data = await response.json();
-            let title = "Please remember your private key: ";
-            alert(title + "\n" + data.private_key);
-            console.log(data.private_key);
-        } catch (error) {
-            console.error('Error:', error);
-        } finally {
-            document.getElementById('loading').style.display = 'none';
-        }
     }
 
     fetch('/access_username')

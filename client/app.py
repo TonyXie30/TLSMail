@@ -4,6 +4,7 @@ import psycopg2
 
 import Config
 import gpg
+import AES
 
 app = Flask(__name__)
 
@@ -12,6 +13,7 @@ current_password = None
 current_skey = None
 current_passphrase = None
 gnupg = gpg.GPG()
+aes = AES.AES()
 pg_host = Config.get_pg_host()
 pg_port = Config.get_pg_port()
 pg_database = Config.get_pg_database()
@@ -39,7 +41,14 @@ def store_username():
         cur.execute("SELECT password FROM public.user WHERE username = %s", (username,))
         result = cur.fetchone()
         current_password = result[0]
+    conn = psycopg2.connect(host='localhost', port=pg_port, database=pg_database, user=pg_user,
+                            password=pg_localPassword)
     print('Username stored successfully')
+    global current_skey
+    with conn.cursor() as cur:
+        cur.execute("SELECT private_key FROM public.skey WHERE username = %s", (username,))
+        result = cur.fetchone()
+        current_skey = result[0]
     return 'Username stored successfully'
 
 
@@ -54,11 +63,17 @@ def mailbox():
     return render_template('MailBox.html')
 
 
-@app.route('/generate_key')
+@app.route('/generate_key', methods=['POST'])
 def generate_key():
-    private_key = gnupg.generate_key(username=current_user, passphrase=current_password)
-    global current_skey
-    current_skey = private_key
+    data = request.get_json()
+    encrypt_method = data['encryption_method']
+    username = data['username']
+    passphrase = data['passphrase']
+    private_key = None
+    if encrypt_method == 'OpenPGP':
+        private_key = gnupg.generate_key(username=username, passphrase=passphrase)
+    elif encrypt_method == 'AES':
+        private_key = aes.generate_key(username=username, passphrase=passphrase)
     return jsonify({'private_key': private_key})
 
 
