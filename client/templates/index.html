@@ -48,17 +48,20 @@
 </head>
 <body>
 <h1>E2E client</h1>
-<div id="loading" style="display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
+<div id="loading"
+     style="display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
     <div style="background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%;">
         Loading...
     </div>
 </div>
-<div id="encryption-method-dialog" style="display: none;position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
+<div id="encryption-method-dialog"
+     style="display: none;position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
     <div style="background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%;">
         <label for="encryption-method">Choose an encryption method:</label>
         <select id="encryption-method">
             <option value="AES">AES</option>
             <option value="OpenPGP">OpenPGP</option>
+            <option value="Cake-AES">Cake-AES</option>
         </select>
         <button onclick="generate_key()">Confirm</button>
     </div>
@@ -158,7 +161,34 @@
                 })
                     .then(response => {
                         if (response.ok) {
-                            window.location.href = '/mailbox';
+                            fetch(host + '/check_encrypted_method', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded'
+                                },
+                                body: `username=${username}`
+                            })
+                                .then(response => {
+                                    if (response.ok) {
+                                        return response.text(); // This returns a Promise
+                                    } else {
+                                        throw new Error('Network response was not ok');
+                                    }
+                                })
+                                .then(data => {
+                                    // Now 'data' is the actual text data you're expecting
+                                    data = data.trim();
+                                    // alert(data);
+                                    if (data === '1' || data === '2') {
+                                        window.location.href = '/mailbox';
+                                    }
+                                    else if (data === '3') {
+                                        window.location.href = '/mailbox_cake';
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error('There has been a problem with your fetch operation:', error);
+                                });
                         } else {
                             return response.text();
                         }
