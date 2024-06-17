@@ -1,6 +1,7 @@
 import base64
 import datetime
 import json
+import time
 
 import requests
 from cryptography.hazmat.primitives import serialization
@@ -130,6 +131,7 @@ def generate_key():
 
 @app.route('/encrypt_message', methods=['POST'])
 def encrypt_message():
+    start = time.time()
     data = request.get_json()
     message = data['content']
     recipient = data['recipient']
@@ -145,16 +147,19 @@ def encrypt_message():
         if encrypted_method == 1:
             encrypted_message = gnupg.encrypt_message(message, recipient)
         elif encrypted_method == 2:
-            encrypted_message = aes.encrypt_message(message, recipient)
+            encrypted_message = aes.encrypt_message(message.encode('utf-8'), recipient)
+            return jsonify({'encrypted_message': encrypted_message.hex()})
         elif encrypted_method == 3:
             pass
     except ValueError:
         return 'Error, maybe wrong recipient'
+    print('Encrypting taken:', time.time() - start)
     return jsonify({'encrypted_message': encrypted_message.decode('utf-8')})
 
 
 @app.route('/decrypt_message', methods=['POST'])
 def decrypt_message():
+    start = time.time()
     data = request.get_json()
     encrypted_message = data['content']
     encrypted_method = None
@@ -169,11 +174,12 @@ def decrypt_message():
         if encrypted_method == 1:
             decrypted_message = gnupg.decrypt_message(encrypted_message, current_passphrase).decode('utf-8')
         elif encrypted_method == 2:
-            decrypted_message = aes.decrypt_message(encrypted_message, current_user, current_passphrase).decode('utf-8')
+            decrypted_message = aes.decrypt_message(bytes.fromhex(encrypted_message), current_user, current_passphrase).decode('utf-8')
         elif encrypted_method == 3:
             pass
     except ValueError:
         return 'Error,maybe wrong password'
+    print('Time taken:', time.time() - start)
     return jsonify({'decrypted_message': decrypted_message})
 
 
@@ -222,6 +228,7 @@ def get_user_ids_and_public_keys(
 
 @app.route('/send_mail_with_sender', methods=['POST'])
 def send_mail_with_sender():
+    start = time.time()
     data = request.get_json()
     from_address = data['from']
     to_address = data['to']
@@ -253,13 +260,13 @@ def send_mail_with_sender():
         'user_ids': bytes(user_ids)
     }
 
-    print("Ciphertexts:", ciphertexts)
-    print("BCC Commitment:", bcc_commitment.hex())
-    print("Commitment Key:", commitment_key.hex())
-    print("Recipient Digests Signature:", recipient_digests_signature.hex())
-    print("Ephemeral Public Key:",
-          public_key.public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw).hex())
-    print("Recipient Ciphertexts:", [ciphertext.hex() for ciphertext in recipient_ciphertexts])
+    # print("Ciphertexts:", ciphertexts)
+    # print("BCC Commitment:", bcc_commitment.hex())
+    # print("Commitment Key:", commitment_key.hex())
+    # print("Recipient Digests Signature:", recipient_digests_signature.hex())
+    # print("Ephemeral Public Key:",
+    #       public_key.public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw).hex())
+    # print("Recipient Ciphertexts:", [ciphertext.hex() for ciphertext in recipient_ciphertexts])
 
 
     def encode_item(item):
@@ -293,11 +300,13 @@ def send_mail_with_sender():
     # response = requests.post(url + '/send_mail_with_sender_cake', data=json.dumps(encryption_data),
     #                          headers={'Content-Type': 'application/json'})
 
+    print('Time taken:', time.time() - start)
     return 'Mail sent successfully'
 
 
 @app.route('/receive_mail_with_receiver', methods=['POST'])
 def receive_mail_with_receiver():
+    start = time.time()
     data = request.form
     username = data.get('username')
 
@@ -379,7 +388,7 @@ def receive_mail_with_receiver():
         decrypted_mails.append(decrypted_mail)
 
     conn.close()
-    print(decrypted_mails)
+    print('Time taken:', time.time() - start)
     return jsonify(decrypted_mails)
 
 
