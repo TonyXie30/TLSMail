@@ -153,7 +153,8 @@ def encrypt_message():
             pass
     except ValueError:
         return 'Error, maybe wrong recipient'
-    print('Encrypting taken:', time.time() - start)
+    finally:
+        print('Encrypting taken:', time.time() - start)
     return jsonify({'encrypted_message': encrypted_message.decode('utf-8')})
 
 
