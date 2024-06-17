@@ -1,7 +1,10 @@
+import base64
 import datetime
 import json
 
 import requests
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
 from flask import Flask, render_template, request, jsonify
 from flask_bcrypt import generate_password_hash
 import psycopg2
@@ -211,7 +214,7 @@ def get_user_ids_and_public_keys(
         for row in rows:
             user_id = row[0]
             public_key_bytes = row[1]
-            public_key = x25519.X25519PublicKey.from_public_bytes(public_key_bytes)
+            public_key = x25519.X25519PublicKey.from_public_bytes(bytes(public_key_bytes))
             user_ids.append(user_id)
             public_keys.append(public_key)
 
@@ -228,21 +231,16 @@ def send_mail_with_sender():
     content = data['content']
     pieces = [subject, content]
 
+    to_address = [to_address]
     conn = get_db_connection()
     user_ids, public_keys = get_user_ids_and_public_keys(conn, from_address, to_address, cc_address, bcc_address)
-
-    sender_device_private_key = read_from_file(from_address, 'private_email_x25519.bin')
-    sender_device_private_key = x25519.X25519PrivateKey.from_private_bytes(sender_device_private_key)
+    conn.close()
 
     ciphertexts, bcc_commitment, commitment_key, recipient_digests_signature, public_key, recipient_ciphertexts, manifest_encrypted, manifest_encrypted_hash, xcha_nonces = main_encrypt(
-        pieces, bcc_address, public_keys, user_ids, 1.0, sender_device_private_key
+        pieces, bcc_address, public_keys, user_ids, 1.0
     )
 
     encryption_data = {
-        'sender': from_address,
-        'recipient': to_address,
-        'cc': cc_address,
-        'bcc': bcc_address,
         'ciphertexts': ciphertexts,
         'bcc_commitment': bcc_commitment,
         'commitment_key': commitment_key,
@@ -254,10 +252,38 @@ def send_mail_with_sender():
         'xcha_nonces': xcha_nonces,
     }
 
-    response = requests.post(url + '/send_mail_with_sender_cake', data=json.dumps(encryption_data),
-                             headers={'Content-Type': 'application/json'})
+    def encode_item(item):
+        if isinstance(item, bytes):
+            return base64.b64encode(item).decode('utf-8')
+        elif isinstance(item, list):
+            return [base64.b64encode(i).decode('utf-8') for i in item]
+        elif isinstance(item, X25519PublicKey):
+            public_key_bytes = item.public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw
+            )
+            return base64.b64encode(public_key_bytes).decode('utf-8')
+        else:
+            return item
 
-    return response.json()
+    encryption_data_encoded = {key: encode_item(value) for key, value in encryption_data.items()}
+
+    # Check if cc_address and bcc_address are empty and replace with '{}'
+    cc_address = cc_address if cc_address else '{}'
+    bcc_address = bcc_address if bcc_address else '{}'
+
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO public.mail (sender, recipient, cc, bcc, date, encryption_data)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (from_address, to_address[0], cc_address, bcc_address, datetime.datetime.now(), json.dumps(encryption_data_encoded)))
+        conn.commit()
+
+    # response = requests.post(url + '/send_mail_with_sender_cake', data=json.dumps(encryption_data),
+    #                          headers={'Content-Type': 'application/json'})
+
+    return 'Mail sent successfully'
 
 
 @app.route('/receive_mail_with_receiver', methods=['POST'])
@@ -287,7 +313,7 @@ def receive_mail_with_receiver():
 
         # Read the recipient's private key for decryption
         private_key_bytes = read_from_file(username, 'private_email_x25519.bin')
-        private_key = x25519.X25519PrivateKey.from_private_bytes(private_key_bytes)
+        private_key = x25519.X25519PrivateKey.from_private_bytes(bytes(private_key_bytes))
 
         # Read the sender's public key
         cur.execute("""
@@ -296,7 +322,7 @@ def receive_mail_with_receiver():
             WHERE username = %s
         """, (sender,))
         sender_public_key_bytes = cur.fetchone()[0]
-        sender_public_key = x25519.X25519PublicKey.from_public_bytes(sender_public_key_bytes)
+        sender_public_key = x25519.X25519PublicKey.from_public_bytes(bytes(sender_public_key_bytes))
 
         # Decrypt the email
         decrypted_pieces = decrypt_email(

@@ -162,7 +162,13 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({from: from, to: to, cc: cc, bcc: bcc, subject: subject, content: content})
-                })
+                }).then(() => {
+                    document.getElementById('loading').style.display = 'none';
+                    alert('Mail sent successfully');
+                }).catch(() => {
+                    document.getElementById('loading').style.display = 'none';
+                    alert('Failed to send mail, check the server.');
+                });
             });
     }
 

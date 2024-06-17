@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 import os
 
+
 def cake_aes_encrypt(plaintext, key):
     backend = default_backend()
     nonce = os.urandom(24)  # Generate a random 24-byte nonce
@@ -43,7 +44,7 @@ def create_manifest(pieces):
     ciphertexts = []
     for piece in pieces:
         key = os.urandom(32)  # Generate a fresh 32-byte key for each piece
-        ciphertext = cake_aes_encrypt(piece, key)
+        ciphertext = cake_aes_encrypt(piece.encode('utf-8'), key)
         ciphertexts.append(ciphertext)
         hash_digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
         hash_digest.update(ciphertext)
@@ -54,8 +55,7 @@ def create_manifest(pieces):
     return manifest, ciphertexts
 
 
-
-def main_encrypt(pieces, bcc, puks, user_ids, version, sender_device_key):
+def main_encrypt(pieces, bcc, puks, user_ids, version, sender_device_key=None):
     # puks 第一个是发送者的puk，后面是接收者的puk 是x25519公钥[]
     # user_ids 和 puks同样结构
     # sender_device_key是发送者的私钥
@@ -71,10 +71,10 @@ def main_encrypt(pieces, bcc, puks, user_ids, version, sender_device_key):
     manifest_encrypted_hash = manifest_encrypted_hash.finalize()
     recipient_digests = []
     recipient_ciphertexts = []
-    xcha_nonces=[]
+    xcha_nonces = []
 
     for puk in puks:
-        recipient_box_ciphertext,  xcha_nonce, recipient_digest = process_recipient(
+        recipient_box_ciphertext, xcha_nonce, recipient_digest = process_recipient(
             private_key, puk, user_ids, manifest_encrypted_hash, bcc_commitment, version, shared_symmetric_key,
             sender_device_key
         )
@@ -82,9 +82,8 @@ def main_encrypt(pieces, bcc, puks, user_ids, version, sender_device_key):
         recipient_ciphertexts.append(recipient_box_ciphertext)
         xcha_nonces.append(xcha_nonce)
 
-
-    recipient_digests_signature = create_recipient_list_signature(sender_device_key, recipient_digests)
-    return ciphertexts, bcc_commitment, commitment_key, recipient_digests_signature, public_key, recipient_ciphertexts,manifest_encrypted,manifest_encrypted_hash,xcha_nonces
+    recipient_digests_signature = None  # create_recipient_list_signature(sender_device_key, recipient_digests)
+    return ciphertexts, bcc_commitment, commitment_key, recipient_digests_signature, public_key, recipient_ciphertexts, manifest_encrypted, manifest_encrypted_hash, xcha_nonces
 
 
 def create_recipient_list_signature(private_key, recipient_digests):
@@ -132,17 +131,16 @@ def process_recipient(ephemeral_private_key, puk, user_ids, manifest_hash, bcc_c
 
     shared_secret = ephemeral_private_key.exchange(puk)
 
-
     # (b) Compute recipient-associated digest
     digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
-    digest.update(user_ids.encode())  # Assuming user_ids is a string that needs encoding
+    digest.update(','.join(str(uid) for uid in user_ids).encode())  # Convert integers to strings and then encode
     digest.update(puk.public_bytes(
-    encoding=serialization.Encoding.Raw,
-    format=serialization.PublicFormat.Raw
-))
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw
+    ))
     digest.update(manifest_hash)
     digest.update(bcc_commitment)
-    digest.update(version.encode())  # Version as a string
+    digest.update(str(version).encode())  # Version as a string
     recipient_digest = digest.finalize()
 
     # (c) Sign the hash (optional)
@@ -166,4 +164,3 @@ def process_recipient(ephemeral_private_key, puk, user_ids, manifest_hash, bcc_c
     return recipient_box_ciphertext, xcha_nonce, recipient_digest
 
 # 示例用法
-
