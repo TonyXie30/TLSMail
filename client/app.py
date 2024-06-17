@@ -250,7 +250,17 @@ def send_mail_with_sender():
         'manifest_encrypted': manifest_encrypted,
         'manifest_encrypted_hash': manifest_encrypted_hash,
         'xcha_nonces': xcha_nonces,
+        'user_ids': bytes(user_ids)
     }
+
+    print("Ciphertexts:", ciphertexts)
+    print("BCC Commitment:", bcc_commitment.hex())
+    print("Commitment Key:", commitment_key.hex())
+    print("Recipient Digests Signature:", recipient_digests_signature.hex())
+    print("Ephemeral Public Key:",
+          public_key.public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw).hex())
+    print("Recipient Ciphertexts:", [ciphertext.hex() for ciphertext in recipient_ciphertexts])
+
 
     def encode_item(item):
         if isinstance(item, bytes):
@@ -301,6 +311,14 @@ def receive_mail_with_receiver():
         """, (username,))
         mails = cur.fetchall()
 
+    def decode_item(item):
+        if isinstance(item, str):
+            return base64.b64decode(item)
+        elif isinstance(item, list):
+            return [base64.b64decode(i) for i in item]
+        else:
+            return item
+
     decrypted_mails = []
 
     for mail in mails:
@@ -309,35 +327,45 @@ def receive_mail_with_receiver():
         cc = mail[2]
         bcc = mail[3]
         date = mail[4]
-        encryption_data = json.loads(mail[5])
+        # read encryption data
+        encryption_data_encoded = mail[5]
+        encryption_data = {key: decode_item(value) for key, value in encryption_data_encoded.items()}
+        public_key_bytes = encryption_data['public_key']
+        public_key = x25519.X25519PublicKey.from_public_bytes(public_key_bytes)
 
         # Read the recipient's private key for decryption
         private_key_bytes = read_from_file(username, 'private_email_x25519.bin')
         private_key = x25519.X25519PrivateKey.from_private_bytes(bytes(private_key_bytes))
 
-        # Read the sender's public key
-        cur.execute("""
-            SELECT public_key_email_bytes
-            FROM public."user"
-            WHERE username = %s
-        """, (sender,))
-        sender_public_key_bytes = cur.fetchone()[0]
-        sender_public_key = x25519.X25519PublicKey.from_public_bytes(bytes(sender_public_key_bytes))
+        # Read the receiver's public key from file
+        receiver_public_key_bytes = read_from_file(username, 'public_email_x25519.bin')
+        receiver_public_key = x25519.X25519PublicKey.from_public_bytes(bytes(receiver_public_key_bytes))
+
+        # # Read the receiver's public key
+        # with conn.cursor() as cur:
+        #     cur.execute("""
+        #                 SELECT public_key_email_bytes
+        #                 FROM public."user"
+        #                 WHERE username = %s
+        #             """, (sender,))
+        #     sender_public_key_bytes = cur.fetchone()[0]
+        #     sender_public_key = x25519.X25519PublicKey.from_public_bytes(bytes(sender_public_key_bytes))
+
+        print(encryption_data['xcha_nonces'])
 
         # Decrypt the email
         decrypted_pieces = decrypt_email(
             encryption_data['ciphertexts'],
-            encryption_data['recipient_ciphertexts'][0],
-            encryption_data['public_key'],
+            encryption_data['recipient_ciphertexts'][1],
+            public_key,
             private_key,
-            sender_public_key,
+            receiver_public_key,
             encryption_data['manifest_encrypted'],
             encryption_data['manifest_encrypted_hash'],
             encryption_data['bcc_commitment'],
             1.0,  # Assuming version 1.0 as used in encryption
-            encryption_data['xcha_nonces'][0],
+            encryption_data['xcha_nonces'][1],
             encryption_data['user_ids'],
-            sender_device_key=sender_public_key
         )
 
         decrypted_mail = {
@@ -345,13 +373,13 @@ def receive_mail_with_receiver():
             'receiver': receiver,
             'cc': cc,
             'date': date,
-            'subject': decrypted_pieces[0],
-            'content': decrypted_pieces[1]
+            'subject': decrypted_pieces[0].decode('utf-8'),
+            'content': decrypted_pieces[1].decode('utf-8')
         }
         decrypted_mails.append(decrypted_mail)
 
     conn.close()
-
+    print(decrypted_mails)
     return jsonify(decrypted_mails)
 
 

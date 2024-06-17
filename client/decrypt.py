@@ -48,14 +48,14 @@ def decrypt_email(ciphertexts, recipient_box_ciphertext, ephemeral_public_key, p
 
     # (b) Derive key using HMACSHA256 with the shared secret
     digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
-    digest.update(user_ids.encode())
+    digest.update(','.join(str(uid) for uid in user_ids).encode())
     digest.update(puk.public_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw
     ))
     digest.update(manifest_hash)
     digest.update(bcc_commitment)
-    digest.update(version.encode())
+    digest.update(str(version).encode())
     recipient_digest = digest.finalize()
 
     hmac_key = hmac.HMAC(shared_secret, hashes.SHA256(), backend=default_backend())
